@@ -32,7 +32,7 @@ fi
 
 echo "==> Ensuring free MySQL service: $AIVEN_SERVICE"
 if ! avn service list "$AIVEN_PROJECT" --format json | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if any(s.get('service_name')=='$AIVEN_SERVICE' for s in d) else 1)" 2>/dev/null; then
-  avn service create mysql "$AIVEN_SERVICE" -t mysql -p free --cloud "$AIVEN_CLOUD" --project "$AIVEN_PROJECT" --format json >/dev/null
+  avn service create "$AIVEN_SERVICE" -t mysql -p free --cloud "$AIVEN_CLOUD" --project "$AIVEN_PROJECT" --format json >/dev/null
   echo "Waiting for MySQL to become RUNNING (2-5 min)..."
   while true; do
     state="$(avn service get "$AIVEN_PROJECT" "$AIVEN_SERVICE" --format json | python3 -c "import sys,json; print(json.load(sys.stdin)['state'])")"
