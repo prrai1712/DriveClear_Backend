@@ -18,15 +18,18 @@ if config("USE_SQLITE", default=False, cast=bool):
 else:
     _database_url = config("DATABASE_URL", default="")
     if _database_url:
+        # dj-database-url forwards ?ssl-mode= as a kwarg mysqlclient rejects; handle in OPTIONS.
+        _parse_url = _database_url.split("?", 1)[0]
         DATABASES["default"] = dj_database_url.parse(  # noqa: F405
-            _database_url,
+            _parse_url,
             conn_max_age=600,
             conn_health_checks=True,
         )
-    # Aiven MySQL requires TLS (ssl-mode=REQUIRED in connection URL).
+    # Aiven MySQL requires TLS.
     _db = DATABASES["default"]  # noqa: F405
     _host = str(_db.get("HOST", ""))
-    _needs_ssl = config("DB_SSL", default=False, cast=bool) or "aivencloud.com" in _host
+    _url_requires_ssl = "ssl-mode=REQUIRED" in _database_url or "ssl_mode=REQUIRED" in _database_url
+    _needs_ssl = config("DB_SSL", default=False, cast=bool) or "aivencloud.com" in _host or _url_requires_ssl
     if _needs_ssl:
         _opts = dict(_db.get("OPTIONS") or {})
         _opts.setdefault("charset", "utf8mb4")
