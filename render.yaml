@@ -1,6 +1,43 @@
-# Render Blueprint — repo root is this backend project (no rootDir needed)
+# Render Blueprint — DriveClear Backend (MySQL + Redis + Django API)
+# Note: Render "databases:" creates Postgres only. MySQL runs as a private Docker service.
+
+envVarGroups:
+  - name: driveclear-db
+    envVars:
+      - key: MYSQL_DATABASE
+        value: driveclear
+      - key: MYSQL_USER
+        value: driveclear
+      - key: MYSQL_PASSWORD
+        generateValue: true
+      - key: MYSQL_ROOT_PASSWORD
+        generateValue: true
 
 services:
+  # MySQL 8 — private service with persistent disk (Render Postgres cannot replace this app DB)
+  - type: pserv
+    name: driveclear-mysql
+    runtime: docker
+    plan: standard
+    repo: https://github.com/render-examples/mysql
+    branch: main
+    autoDeploy: false
+    disk:
+      name: mysql-data
+      mountPath: /var/lib/mysql
+      sizeGB: 10
+    envVars:
+      - fromGroup: driveclear-db
+
+  # Redis-compatible cache (Valkey) — OTP, rate limiting, health check
+  - type: keyvalue
+    name: driveclear-redis
+    plan: starter
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: all
+
   - type: web
     name: driveclear-api
     runtime: python
@@ -9,17 +46,51 @@ services:
     startCommand: python manage.py migrate --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --timeout 120
     healthCheckPath: /api/v1/health/
     envVars:
+      - fromGroup: driveclear-db
       - key: DJANGO_SETTINGS_MODULE
         value: config.settings.production
       - key: SECRET_KEY
         generateValue: true
-      - key: DATABASE_URL
-        fromDatabase:
+      - key: ALLOWED_HOSTS
+        value: driveclear-api.onrender.com
+      - key: DB_NAME
+        value: driveclear
+      - key: DB_USER
+        value: driveclear
+      - key: DB_PORT
+        value: "3306"
+      - key: DB_HOST
+        fromService:
           name: driveclear-mysql
-          property: connectionString
+          type: pserv
+          property: host
+      - key: DB_PASSWORD
+        fromService:
+          name: driveclear-mysql
+          type: pserv
+          envVarKey: MYSQL_PASSWORD
       - key: REDIS_URL
-        sync: false
+        fromService:
+          name: driveclear-redis
+          type: keyvalue
+          property: connectionString
+      - key: FIREBASE_PROJECT_ID
+        value: driveclear-82af6
+      - key: SMS_PROVIDER
+        value: mock
+      - key: EXTERNAL_CHALLAN_API_URL
+        value: https://www.challanpay.in/api/d-to-c/user-verification
+      - key: EXTERNAL_CHALLAN_FIND_URL
+        value: https://www.challanpay.in/api/d-to-c/find-challans
+      - key: EXTERNAL_CHALLAN_UTM_SOURCE
+        value: challanpay
+      - key: CHALLAN_FETCH_CACHE_DAYS
+        value: "3"
       - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: FIREBASE_CREDENTIALS_JSON
+        sync: false
+      - key: MSG91_AUTH_KEY
         sync: false
       - key: RAZORPAY_KEY_ID
         sync: false
@@ -27,9 +98,7 @@ services:
         sync: false
       - key: RAZORPAY_WEBHOOK_SECRET
         sync: false
-
-databases:
-  - name: driveclear-mysql
-    plan: starter
-    databaseName: driveclear
-    user: driveclear
+      - key: API_PAYLOAD_ENCRYPTION_ENABLED
+        sync: false
+      - key: API_PAYLOAD_ENCRYPTION_KEY
+        sync: false
