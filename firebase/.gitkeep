@@ -1,0 +1,3 @@
+# Place your Firebase service account JSON here:
+# firebase/driveclear-service-account.json
+# Then set in .env: FIREBASE_CREDENTIALS_PATH=firebase/driveclear-service-account.json
