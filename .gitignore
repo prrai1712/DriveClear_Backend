@@ -5,6 +5,7 @@ __pycache__/
 venv/
 .env
 deploy/production-credentials.txt
+deploy/aiven.token
 firebase-adminsdk*.json
 firebase-service-account.json
 *.log
