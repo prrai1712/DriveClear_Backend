@@ -1,79 +1,33 @@
-# Render Blueprint — DriveClear Backend (MySQL + Redis + Django API)
-# Note: Render "databases:" creates Postgres only. MySQL runs as a private Docker service.
-
-envVarGroups:
-  - name: driveclear-db
-    envVars:
-      - key: MYSQL_DATABASE
-        value: driveclear
-      - key: MYSQL_USER
-        value: driveclear
-      - key: MYSQL_PASSWORD
-        generateValue: true
-      - key: MYSQL_ROOT_PASSWORD
-        generateValue: true
+# FREE Render deploy — web service only ($0/month)
+# MySQL runs on Aiven free tier (external). No Redis needed (uses in-memory cache).
 
 services:
-  # MySQL 8 — private service with persistent disk (Render Postgres cannot replace this app DB)
-  - type: pserv
-    name: driveclear-mysql
-    runtime: docker
-    plan: standard
-    repo: https://github.com/render-examples/mysql
-    branch: main
-    autoDeploy: false
-    disk:
-      name: mysql-data
-      mountPath: /var/lib/mysql
-      sizeGB: 10
-    envVars:
-      - fromGroup: driveclear-db
-
-  # Redis-compatible cache (Valkey) — OTP, rate limiting, health check
-  - type: keyvalue
-    name: driveclear-redis
-    plan: starter
-    maxmemoryPolicy: allkeys-lru
-    ipAllowList:
-      - source: 0.0.0.0/0
-        description: all
-
   - type: web
     name: driveclear-api
     runtime: python
-    plan: starter
+    plan: free
     buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
-    startCommand: python manage.py migrate --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --timeout 120
+    startCommand: python manage.py migrate --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120
     healthCheckPath: /api/v1/health/
     envVars:
-      - fromGroup: driveclear-db
       - key: DJANGO_SETTINGS_MODULE
         value: config.settings.production
       - key: SECRET_KEY
         generateValue: true
       - key: ALLOWED_HOSTS
-        value: driveclear-api.onrender.com
+        sync: false
       - key: DB_NAME
-        value: driveclear
+        sync: false
       - key: DB_USER
-        value: driveclear
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_HOST
+        sync: false
       - key: DB_PORT
         value: "3306"
-      - key: DB_HOST
-        fromService:
-          name: driveclear-mysql
-          type: pserv
-          property: host
-      - key: DB_PASSWORD
-        fromService:
-          name: driveclear-mysql
-          type: pserv
-          envVarKey: MYSQL_PASSWORD
-      - key: REDIS_URL
-        fromService:
-          name: driveclear-redis
-          type: keyvalue
-          property: connectionString
+      - key: SECURE_SSL_REDIRECT
+        value: "false"
       - key: FIREBASE_PROJECT_ID
         value: driveclear-82af6
       - key: SMS_PROVIDER
