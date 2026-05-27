@@ -16,8 +16,9 @@ if config("USE_SQLITE", default=False, cast=bool):
         "NAME": BASE_DIR / "db.sqlite3",  # noqa: F405
     }
 else:
-    _database_url = config("DATABASE_URL", default="")
+    _database_url = config("DATABASE_URL", default="") or config("MYSQL_URL", default="")
     if _database_url:
+
         # dj-database-url forwards ?ssl-mode= as a kwarg mysqlclient rejects; handle in OPTIONS.
         _parse_url = _database_url.split("?", 1)[0]
         DATABASES["default"] = dj_database_url.parse(  # noqa: F405
