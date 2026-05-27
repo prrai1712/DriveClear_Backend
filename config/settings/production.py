@@ -25,11 +25,9 @@ else:
             conn_max_age=600,
             conn_health_checks=True,
         )
-    # Aiven MySQL requires TLS.
+    # SSL is optional and only applied if DB_SSL is set to True (e.g. for Aiven)
     _db = DATABASES["default"]  # noqa: F405
-    _host = str(_db.get("HOST", ""))
-    _url_requires_ssl = "ssl-mode=REQUIRED" in _database_url or "ssl_mode=REQUIRED" in _database_url
-    _needs_ssl = config("DB_SSL", default=False, cast=bool) or "aivencloud.com" in _host or _url_requires_ssl
+    _needs_ssl = config("DB_SSL", default=False, cast=bool)
     if _needs_ssl:
         _opts = dict(_db.get("OPTIONS") or {})
         _opts.setdefault("charset", "utf8mb4")
