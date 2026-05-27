@@ -12,7 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RENDER_SERVICE = "srv-d86u5gd7vvec73amkjt0"
-RENDER_API_URL = "https://driveclear-api.onrender.com"
+RENDER_API_URL = "https://driveclearbackend-production.up.railway.app"
 AIVEN_PROJECT = os.environ.get("AIVEN_PROJECT", "driveclear")
 AIVEN_SERVICE = os.environ.get("AIVEN_SERVICE", "driveclear-mysql")
 AIVEN_CLOUD = os.environ.get("AIVEN_CLOUD", "google-asia-southeast1")
@@ -159,7 +159,7 @@ def update_render(key: str, db: dict[str, str], *, use_sqlite: bool = False) -> 
     merged = {item["envVar"]["key"]: item["envVar"].get("value", "") for item in existing}
     merged.update(
         {
-            "ALLOWED_HOSTS": "driveclear-api.onrender.com",
+            "ALLOWED_HOSTS": "driveclearbackend-production.up.railway.app",
             "CORS_ALLOWED_ORIGINS": merged.get("CORS_ALLOWED_ORIGINS") or "http://localhost:3000",
             "SECURE_SSL_REDIRECT": "false",
             "USE_SQLITE": "false",
@@ -183,7 +183,7 @@ def save_credentials(db: dict[str, str]) -> Path:
     lines = [
         "# DriveClear Production credentials",
         f"API_URL={RENDER_API_URL}/api/v1",
-        f"ALLOWED_HOSTS=driveclear-api.onrender.com",
+        f"ALLOWED_HOSTS=driveclearbackend-production.up.railway.app",
     ]
     lines.extend(f"{k}={v}" for k, v in db.items())
     lines.append(f"# Health: curl {RENDER_API_URL}/api/v1/health/")
@@ -254,7 +254,7 @@ def main() -> None:
     print("\n=== DEPLOY COMPLETE (MySQL) ===")
     print(f"Credentials: {creds_file}")
     print(f"API: {RENDER_API_URL}/api/v1")
-    print("Wait ~3 min, then: curl https://driveclear-api.onrender.com/api/v1/health/")
+    print("Wait ~3 min, then: curl https://driveclearbackend-production.up.railway.app/api/v1/health/")
 
 
 if __name__ == "__main__":
