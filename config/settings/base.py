@@ -183,8 +183,9 @@ EXTERNAL_CHALLAN_FIND_URL = config(
 EXTERNAL_CHALLAN_UTM_SOURCE = config("EXTERNAL_CHALLAN_UTM_SOURCE", default="challanpay")
 
 RAZORPAY_KEY_ID = config("RAZORPAY_KEY_ID", default="")
-RAZORPAY_KEY_SECRET = config("RAZORPAY_KEY_SECRET", default="")
+RAZORPAY_KEY_SECRET = config("RAZORPAY_KEY_SECRET", default=config("KEY_SECRET", default=""))
 RAZORPAY_WEBHOOK_SECRET = config("RAZORPAY_WEBHOOK_SECRET", default="")
+MOCK_PAYMENTS = config("MOCK_PAYMENTS", default=False, cast=bool)
 
 SMS_PROVIDER = config("SMS_PROVIDER", default="mock")  # mock | msg91
 MSG91_AUTH_KEY = config("MSG91_AUTH_KEY", default="")
@@ -275,6 +276,7 @@ LOGGING = {
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout",
             "formatter": "verbose",
             "filters": ["correlation_id"],
         },

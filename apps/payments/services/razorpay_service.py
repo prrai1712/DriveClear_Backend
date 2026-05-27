@@ -23,7 +23,12 @@ logger = logging.getLogger("driveclear.payments")
 class RazorpayService:
     def __init__(self, db: IDatabaseManager | None = None):
         self._db = db or get_db_manager()
-        self.client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+        self.mock_mode = getattr(settings, "MOCK_PAYMENTS", False) or not settings.RAZORPAY_KEY_ID or not settings.RAZORPAY_KEY_SECRET
+        if not self.mock_mode:
+            self.client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+        else:
+            self.client = None
+            logger.info("Razorpay credentials missing or MOCK_PAYMENTS active. Using Mock payments fallback.")
         self.order_repo = OrderRepository(self._db)
         self.payment_repo = PaymentRepository(self._db)
         self.workflow = PaymentWorkflowService(self.order_repo)
@@ -37,28 +42,37 @@ class RazorpayService:
             return self._checkout_payload(order)
 
         amount_paise = rupees_to_paise(float(order.total_amount))
-        rp_order = self.client.order.create(
-            {
-                "amount": amount_paise,
-                "currency": settings.CURRENCY,
-                "receipt": str(order.uuid)[:40],
-                "notes": {
-                    "driveclear_order_uuid": str(order.uuid),
-                    "user_id": str(user.id),
-                },
-            }
-        )
+        if self.mock_mode:
+            import uuid
+            rp_order_id = f"order_mock_{uuid.uuid4().hex[:20]}"
+        else:
+            rp_order = self.client.order.create(
+                {
+                    "amount": amount_paise,
+                    "currency": settings.CURRENCY,
+                    "receipt": str(order.uuid)[:40],
+                    "notes": {
+                        "driveclear_order_uuid": str(order.uuid),
+                        "user_id": str(user.id),
+                    },
+                }
+            )
+            rp_order_id = rp_order["id"]
 
         def _persist():
-            order.razorpay_order_id = rp_order["id"]
+            order.razorpay_order_id = rp_order_id
             order.save(update_fields=["razorpay_order_id", "updated_at"])
-            self.order_repo.add_timeline(order.id, "PAYMENT_INITIATED", "Payment initiated with Razorpay")
+            self.order_repo.add_timeline(
+                order.id,
+                "PAYMENT_INITIATED",
+                "Payment initiated with Razorpay (Mock)" if self.mock_mode else "Payment initiated with Razorpay"
+            )
             self.payment_repo.create_payment(
                 order_id=order.id,
-                gateway_order_id=rp_order["id"],
+                gateway_order_id=rp_order_id,
                 amount=order.total_amount,
                 payment_status=PaymentStatus.INITIATED,
-                idempotency_key=f"pay_init:{order.id}:{rp_order['id']}",
+                idempotency_key=f"pay_init:{order.id}:{rp_order_id}",
             )
 
         self._db.run_in_transaction(_persist)
@@ -81,9 +95,12 @@ class RazorpayService:
                 return OrderService(self._db)._serialize_order(order, include_timeline=True)
             raise PaymentException(message="Payment verification in progress", code="PAYMENT_DUPLICATE")
 
-        if not self._verify_signature(razorpay_order_id, razorpay_payment_id, razorpay_signature):
-            logger.warning("Invalid Razorpay signature", extra={"extra_data": {"payment_id": razorpay_payment_id}})
-            raise PaymentException(message="Invalid payment signature", code="PAYMENT_FAILED")
+        if not self.mock_mode:
+            if not self._verify_signature(razorpay_order_id, razorpay_payment_id, razorpay_signature):
+                logger.warning("Invalid Razorpay signature", extra={"extra_data": {"payment_id": razorpay_payment_id}})
+                raise PaymentException(message="Invalid payment signature", code="PAYMENT_FAILED")
+        else:
+            logger.info("Mock payment verification signature check bypassed.")
 
         order = self.order_repo.get_by_uuid(user_id, order_uuid)
         if not order or order.razorpay_order_id != razorpay_order_id:
@@ -96,19 +113,32 @@ class RazorpayService:
         if payment.payment_status == PaymentStatus.SUCCESS:
             return OrderService(self._db)._serialize_order(order, include_timeline=True)
 
-        rp_payment = self.client.payment.fetch(razorpay_payment_id)
-        if rp_payment.get("status") != "captured":
-            payment.failure_reason = f"Status: {rp_payment.get('status')}"
-            payment.payment_status = PaymentStatus.FAILED
-            payment.gateway_response = rp_payment
-            payment.save()
-            self.order_repo.add_timeline(order.id, OrderStatus.FAILED, "Payment not captured")
-            raise PaymentException(message="Payment not captured", code="PAYMENT_FAILED")
+        if not self.mock_mode:
+            rp_payment = self.client.payment.fetch(razorpay_payment_id)
+            if rp_payment.get("status") != "captured":
+                payment.failure_reason = f"Status: {rp_payment.get('status')}"
+                payment.payment_status = PaymentStatus.FAILED
+                payment.gateway_response = rp_payment
+                payment.save()
+                self.order_repo.add_timeline(order.id, OrderStatus.FAILED, "Payment not captured")
+                raise PaymentException(message="Payment not captured", code="PAYMENT_FAILED")
+        else:
+            rp_payment = {
+                "id": razorpay_payment_id,
+                "status": "captured",
+                "amount": rupees_to_paise(float(order.total_amount)),
+                "currency": settings.CURRENCY,
+                "method": "mock",
+            }
 
         def _confirm_payment():
             self.payment_repo.mark_success(payment, razorpay_payment_id, razorpay_signature, rp_payment)
             self.order_repo.mark_payment_success(order, razorpay_payment_id)
-            self.order_repo.add_timeline(order.id, OrderStatus.PAYMENT_SUCCESS, "Payment successful")
+            self.order_repo.add_timeline(
+                order.id,
+                OrderStatus.PAYMENT_SUCCESS,
+                "Payment successful (Mock)" if self.mock_mode else "Payment successful"
+            )
             next_status = (
                 OrderStatus.COURT_PROCESSING
                 if order.order_type == OrderType.COURT_SETTLEMENT
